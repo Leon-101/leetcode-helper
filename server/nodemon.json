@@ -1,0 +1,11 @@
+{
+	"restartable": "rs",
+	"verbose": true,
+	"watch": [
+		"config/",
+		"src/"
+	],
+	"ignore": [],
+	"delay": "1000",
+	"ext": "ts js json"
+}

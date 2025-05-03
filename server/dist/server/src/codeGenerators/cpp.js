@@ -1,0 +1,141 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.generateFiles = void 0;
+// 函数形参
+class Parameter {
+    constructor(str) {
+        str = str.trim();
+        const nameIndex = str.search(/\w+$/);
+        this.name = str.slice(nameIndex);
+        let type = str.slice(0, nameIndex).trim();
+        // 引用类型的参数需去除&
+        if (type.at(-1) == "&")
+            type = type.slice(0, -1);
+        this.type = type;
+    }
+}
+// 类的成员函数
+class MemberFunction {
+    constructor(returnType, functionName, parameters) {
+        this.returnType = returnType;
+        this.functionName = functionName;
+        this.parametersList = parameters.split(",").map(p => new Parameter(p));
+    }
+}
+// C++ 代码生成器
+class CPPGenerator {
+    constructor(code, testCases) {
+        this.className = "";
+        this.memberFunctions = [];
+        if (!code) {
+            throw new Error("code is empty");
+        }
+        this.originalCode = code;
+        this.testCases = testCases;
+        this._parse();
+    }
+    _parse() {
+        var _a, _b;
+        let code = this._removeComment(this.originalCode);
+        const headMatch = (_a = code.match(/\bclass\s+(\w+)/)) !== null && _a !== void 0 ? _a : "";
+        this.className = headMatch && headMatch[1];
+        if (this.className == "") {
+            throw new Error("class name is empty");
+        }
+        const bodyMatch = (_b = code.match(/public:([\s\S]+)(private:)?/)) !== null && _b !== void 0 ? _b : "";
+        code = bodyMatch && bodyMatch[1];
+        if (!code) {
+            throw new Error("class body is empty");
+        }
+        const memberFunctionPattern = /([\w< >\*]+)\s+(\w+)\s*\((.*?)\)\s*\{/g;
+        const memberFunctionMatches = code.matchAll(memberFunctionPattern);
+        this.memberFunctions = [];
+        for (const m of memberFunctionMatches) {
+            const [, returnType, functionName, parameters] = m;
+            this.memberFunctions.push(new MemberFunction(returnType, functionName, parameters));
+        }
+        if (this.memberFunctions.length == 0) {
+            throw new Error("no member function found");
+        }
+        // 数据结构题
+        if (this.className != "Solution") {
+            // todo
+        }
+    }
+    _removeComment(code) {
+        // 删除单行注释
+        code = code.replace(/\/\/.*$/g, "");
+        // 删除多行注释
+        return code = code.replace(/\/\*[\s\S]*?\*\//g, "");
+    }
+    // 生成 main.cpp 的代码
+    generateMainCPP() {
+        return this.className == "Solution" ? this._generalMainCpp() : this._mainCppForDsa();
+    }
+    // 生成 solution.cpp 的代码
+    generateSolutionCpp() {
+        const pre = ["#ifdef __LOCAL",
+            `#include "leetcode.h"`,
+            "#endif",
+            ""];
+        const code = this.originalCode;
+        return code.startsWith(pre[0]) ? code : pre.join("\n") + code;
+    }
+    // 常规题目（非数据结构题）
+    _generalMainCpp() {
+        const template = `#include "leetcode.h"
+#include "solution.cpp"
+
+int main()
+{
+	json testCases = leetcode:: loadTestCases(std:: filesystem:: path(__FILE__).replace_filename("testcases.txt"), ${this.memberFunctions[0].parametersList.length + 1});
+	int _num = 1, _passCnt = 0;
+	for (auto & testCase : testCases)
+	{
+${this.memberFunctions[0].parametersList.map((p, i) => `		auto ${p.name} = testCase[${i}].get<${p.type}>();`).join("\n")}
+		Timer _timer(_num);
+		_timer.start();
+		Solution solution;
+		auto ans = solution.${this.memberFunctions[0].functionName} (${this.memberFunctions[0].parametersList.map(p => p.name).join(", ")});
+		_timer.stopAndPrint();
+		_passCnt += leetcode::judge(_num++, testCase, ans);
+	}
+
+	cout << "Passed " << _passCnt << "/" << testCases.size() << " cases" << endl;
+	return 0;
+}`;
+        return template;
+    }
+    // 数据结构题
+    _mainCppForDsa() {
+        // todo
+        return "ing";
+    }
+}
+;
+/**
+ * 根据给定的题目信息，生成代码文件的内容以及保存路径，支持多文件
+ */
+const generateFiles = (prob) => {
+    const generator = new CPPGenerator(prob.editorCode, prob.testCases);
+    let dirName = `${prob.id}.${prob.name}`;
+    if (prob.isContest) {
+        const [contestType, , contestId] = prob.contestName.split("-");
+        dirName = `contest / ${contestType} /${contestId}/Q${prob.idInContest}.${prob.name}`;
+    }
+    return [
+        {
+            filePath: `${dirName}/solution.cpp`,
+            fileContent: generator.generateSolutionCpp(),
+        },
+        {
+            filePath: `${dirName}/main.cpp`,
+            fileContent: generator.generateMainCPP(),
+        },
+        {
+            filePath: `${dirName}/testcases.txt`,
+            fileContent: prob.testCases.map(tc => tc.input.map(p => p.value).join("\n") + "\n" + tc.output).join("\n\n"), // 参考官方的用例格式
+        },
+    ];
+};
+exports.generateFiles = generateFiles;
